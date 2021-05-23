@@ -23,10 +23,11 @@ import kim.hsl.bm.BuildConfig;
 import kim.hsl.bm.diskcache.DiskLruCache;
 
 /**
- * Bitmap 内存缓存
- * 在将图片缓存到 LruCache 内存中基础上 ,
- * 将从 LruCache 中移除的最近没有使用的 Bitmap 对象的内存复用
- * 这样能最大限度减少内存抖动
+ * Bitmap 缓存工具类
+ *
+ * 整合了：内存Lru缓存、磁盘Lru缓存、待回收bitmap内存复用，三大功能。
+ * 是比 BitmapLruCache 、 BitmapLruCacheMemoryReuse 的多处磁盘Lru缓存的功能。
+ *
  */
 public class BitmapDiskLruCacheMemoryReuse {
     private static final String TAG = "BitmapMemoryCache";
@@ -375,6 +376,18 @@ public class BitmapDiskLruCacheMemoryReuse {
         mLruCache.evictAll();
     }
 
+    /**
+     * 清除 磁盘LruCache 缓存
+     */
+    public void clearDiskLruCache(){
+        if(mDiskLruCache != null && !mDiskLruCache.isClosed()){
+            try {
+                mDiskLruCache.delete();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    }
 
     /*
         下面的 2 个方法是提供给用户用于操作 磁盘 的接口
@@ -391,15 +404,17 @@ public class BitmapDiskLruCacheMemoryReuse {
         try {
             snapshot = mDiskLruCache.get(key);
             // 如果缓存中有对应 key 键值的文件 , 不进行任何处理
-            if(snapshot != null) {
+            if(snapshot == null) {
                 // 该用法与 SharedPreference 用法类似
                 DiskLruCache.Editor editor = mDiskLruCache.edit(key);
                 if(editor != null){
                     // 这里的 0 表示获取该 key 对应的第 0 个文件
                     // 每个 可以 可以对应多个文件 , 这个值是创建 DiskLruCache 时传入的 valueCount 参数
                     outputStream = editor.newOutputStream(0);
+                    // todo，这里有个缺陷，只支持 JPG 的，
+                    // todo，这里应该动态的设置，应该接收 option 参数来获取图片类型；
                     // 写出 Bitmap 对象到文件中
-                    bitmap.compress(Bitmap.CompressFormat.JPEG, 0, outputStream);
+                    bitmap.compress(Bitmap.CompressFormat.JPEG, 100, outputStream);
 
                     // 该用法与 SharedPreference 用法类似
                     editor.commit();
@@ -433,14 +448,18 @@ public class BitmapDiskLruCacheMemoryReuse {
         InputStream inputStream = null;
         try {
             snapshot = mDiskLruCache.get(key);
-            // 如果缓存中有对应 key 键值的文件 , 不进行任何处理
+
+            // 如果缓存中有对应 key 键值的文件 , 则读取图片返回
             if(snapshot != null) {
                 // 该用法与 SharedPreference 用法类似
-                DiskLruCache.Editor editor = mDiskLruCache.edit(key);
-                if(editor != null){
+                //DiskLruCache.Editor editor = mDiskLruCache.edit(key);
+                // todo 获取的时候，没必要通过 editor
+                if(snapshot != null){
                     // 这里的 0 表示获取该 key 对应的第 0 个文件
                     // 每个 可以 可以对应多个文件 , 这个值是创建 DiskLruCache 时传入的 valueCount 参数
-                    inputStream = editor.newInputStream(0);
+                    //inputStream = editor.newInputStream(0);
+
+                    inputStream = snapshot.getInputStream(0);
 
                     BitmapFactory.Options options = new BitmapFactory.Options();
                     options.inMutable = true;
@@ -455,7 +474,7 @@ public class BitmapDiskLruCacheMemoryReuse {
                     }
 
                     // 该用法与 SharedPreference 用法类似
-                    editor.commit();
+                    //editor.commit();
                 }
             }
         } catch (IOException e) {
@@ -475,6 +494,48 @@ public class BitmapDiskLruCacheMemoryReuse {
         return bitmap;
     }
 
+    /**
+     * 优化后的方法
+     * 从 磁盘缓存 中取出 Bitmap 对象
+     * @param key       键值
+     * @param inBitmap 复用 Bitmap 内存
+     * @return
+     */
+    public Bitmap getBitmapFromDisk2(String key, Bitmap inBitmap){
+        Bitmap bitmap = null;
+        DiskLruCache.Snapshot snapshot = null;
+        InputStream inputStream = null;
+        try {
+            snapshot = mDiskLruCache.get(key);
+
+            // 如果缓存中有对应 key 键值的文件 , 则读取图片返回
+            if(snapshot != null) {
+
+                    inputStream = snapshot.getInputStream(0);
+
+                    BitmapFactory.Options options = new BitmapFactory.Options();
+                    options.inMutable = true;
+                    options.inBitmap = inBitmap;
+
+                    // 读入 Bitmap 对象到内存中
+                    bitmap = BitmapFactory.decodeStream(inputStream, null, options);
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }finally {
+            if(snapshot != null) {
+                snapshot.close();
+            }
+            if(inputStream != null){
+                try {
+                    inputStream.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+        return bitmap;
+    }
 
 
 }

@@ -11,6 +11,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.util.Log;
+import android.widget.ImageView;
 import android.widget.TextView;
 
 import kim.hsl.bm.utils.BitmapDiskLruCacheMemoryReuse;
@@ -53,13 +54,17 @@ public class MainActivity extends AppCompatActivity {
      * 图像磁盘内存缓存
      */
     private void diskMemoryCache(){
+        int resId = R.drawable.avatar_rengwuxian; // R.drawable.blog、R.drawable.cat
+
         // 初始化 LruCache 内存缓存 , 与引用队列 , 一般在 onCreate 方法中初始化
         // 这里为了演示 , 放在方法的开头位置
         BitmapDiskLruCacheMemoryReuse.getInstance().init(this, Environment.getExternalStorageDirectory() + "/diskCache");
 
         // 1. 第一次尝试从 LruCache 内存中获取 Bitmap 数据
         Bitmap bitmap = BitmapDiskLruCacheMemoryReuse.getInstance().
-                getBitmapFromLruCache(R.drawable.blog + "");
+                getBitmapFromLruCache(resId + "");
+
+        Log.i("guohao","从内存中获取 " + (bitmap != null));
 
         /*
             如果从内存中获取 Bitmap 对象失败 , 再次从磁盘中尝试获取该 Bitmap
@@ -67,27 +72,44 @@ public class MainActivity extends AppCompatActivity {
         if(bitmap == null){
             // 要复用内存的 Bitmap 对象 , 将新的 Bitmap 写入到该 Bitmap 内存中
             Bitmap inBitmap = null;
+
             // 尝试获取复用对象
-            BitmapDiskLruCacheMemoryReuse.getInstance().
-                    getReuseBitmap(200, 200, 1);
+            inBitmap = BitmapDiskLruCacheMemoryReuse.getInstance().
+                    getReuseBitmap(500, 500, 1);
+            Log.i("guohao","尝试获取复用对象 " + (inBitmap != null));
+
+            // todo，删除磁盘缓存
+            //BitmapDiskLruCacheMemoryReuse.getInstance().clearDiskLruCache();// 这么做会导致磁盘缓存关闭
+            // 手动去该路径： /sdcard/diskCache 删除吧
 
             // 2. 第二次尝试从磁盘中获取图片
-            bitmap = BitmapDiskLruCacheMemoryReuse.getInstance().getBitmapFromDisk(
-                    R.drawable.blog + "", inBitmap);
+            bitmap = BitmapDiskLruCacheMemoryReuse.getInstance().getBitmapFromDisk2(
+                    resId + "", inBitmap);
 
+            Log.i("guohao","从磁盘中获取 " + (bitmap != null));
 
             // 磁盘中没有找到 , 再次尝试加载该图片
             if(bitmap == null) {
                 // 3. 如果内存, 磁盘都没有获取到 Bitmap, 那么加载指定大小格式的图像
-                bitmap = BitmapSizeReduce.getResizedBitmap(this, R.drawable.blog,
-                        200, 200, false, inBitmap);
+                bitmap = BitmapSizeReduce.getResizedBitmap(this, resId,
+                        500, 500, false, inBitmap);
+
+                if(bitmap != null) Log.i("guohao","加载图片成功");
 
                 // 将新的 bitap 放入 LruCache 内存缓存中
+//                BitmapDiskLruCacheMemoryReuse.getInstance().
+//                        putBitmapToLruCache(R.drawable.blog + "", bitmap);
+
+                // 将新的 bitap 放入 LruCache 磁盘缓存中
                 BitmapDiskLruCacheMemoryReuse.getInstance().
-                        putBitmapToLruCache(R.drawable.blog + "", bitmap);
+                        putBitmapToDisk(resId + "", bitmap);
+
+                Log.i("guohao","图片写入缓存完成");
             }
 
         }
+
+        if(bitmap != null) ((ImageView)findViewById(R.id.sample_img)).setImageBitmap(bitmap);
     }
 
 

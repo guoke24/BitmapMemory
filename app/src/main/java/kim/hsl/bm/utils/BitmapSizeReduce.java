@@ -4,6 +4,7 @@ import android.content.Context;
 import android.content.res.Resources;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.os.Build;
 import android.util.Log;
 
 /**
@@ -177,11 +178,17 @@ public class BitmapSizeReduce {
             另外被复用的图像的 像素格式 Config ( 如 RGB_565 ) 会覆盖设置的 inPreferredConfig 参数
          */
         options.inBitmap = inBitmap;
+        // todo，此处有个问题，上述的 inSampleSize 可能不是 1 了
+        // 若 4.4 以下的版本得到的 inBitmap，inSampleSize 不是 1 ，则不能用 inBitmap
+        // 所以要加一个判断
+        if(Build.VERSION.SDK_INT < Build.VERSION_CODES.KITKAT
+            && inSampleSize != 1){
+            options.inBitmap = null;
+        }
 
 
         // 4. 解码图片 , 并返回被解码的图片
 
         return BitmapFactory.decodeResource(resources, iamgeResId, options);
     }
-
 }
